@@ -11,6 +11,6 @@
 ../Core/Src/main.c:388:6:DS18B20_SkipRom	1
 ../Core/Src/main.c:395:7:DS18B20_GetTemp	3
 ../Core/Src/main.c:451:9:DS18B20_StartConversionAll	2
-../Core/Src/main.c:467:5:main	5
+../Core/Src/main.c:466:5:main	5
 ../Core/Src/main.c:563:6:SystemClock_Config	3
-../Core/Src/main.c:605:6:Error_Handler	1
+../Core/Src/main.c:606:6:Error_Handler	1
