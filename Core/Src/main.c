@@ -27,7 +27,7 @@
 #include <stdio.h>
 
 #define DS18B20_PORT GPIOA
-#define DS18B20_PIN GPIO_PIN_0
+#define DS18B20_PIN GPIO_PIN_1
 
 #define MAX_DS18B20_SENSORS 5
 /* USER CODE END Includes */
@@ -490,6 +490,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART1_UART_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_Delay(100); // 等待总线稳定

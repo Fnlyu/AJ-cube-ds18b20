@@ -57,8 +57,10 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define DS18B20_DQ_Pin GPIO_PIN_0
+#define DS18B20_DQ_Pin GPIO_PIN_1
 #define DS18B20_DQ_GPIO_Port GPIOA
+#define JDQ_Pin GPIO_PIN_4
+#define JDQ_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 
