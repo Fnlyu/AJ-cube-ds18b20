@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "i2c.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -25,6 +26,7 @@
 /* USER CODE BEGIN Includes */
 #include <string.h>
 #include <stdio.h>
+#include "oled.h"
 
 #define DS18B20_PORT GPIOA
 #define DS18B20_PIN GPIO_PIN_1
@@ -509,15 +511,28 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   MX_USART3_UART_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
   RELAY_Init();
-  
+    OLED_Init();  // 初始化OLED
+
   HAL_Delay(100); // 等待总线稳定
+
+    // 在OLED上显示欢迎信息
+  OLED_ShowString(0, 0, "DS18B20 Temperature", 8);
+  OLED_ShowString(0, 16, "System Initializing", 8);
+  OLED_Refresh();
+    HAL_Delay(1000); // 显示欢迎信息一段时间
+
   HAL_UART_Transmit(&huart3, (uint8_t *)"DS18B20 Multi-Sensor Test\r\n", strlen("DS18B20 Multi-Sensor Test\r\n"), 100);
 
   // --- 修改：扫描设备 ---
   DS18B20_ScanDevices();
+
+    // 在OLED上显示传感器信息
+  OLED_DisplaySensorInfo(g_num_sensors);
+  HAL_Delay(2000);
 
   if (g_num_sensors == 0)
   {
@@ -549,6 +564,7 @@ int main(void)
         temperature = DS18B20_GetTemp(g_ds18b20_roms[i]);
         // 保存温度值到数组中
         temperatureArray[i] = temperature;
+        
         // 格式化ROM地址用于显示
         char rom_str[25];
         sprintf(rom_str, "%02X;%02X;%02X;%02X;%02X;%02X;%02X;%02X",
@@ -565,34 +581,44 @@ int main(void)
           sprintf(msg, "Sensor %d [%s]: Read Error (Code: %.1f)\r\n", i, rom_str, temperature);
         }
         HAL_UART_Transmit(&huart3, (uint8_t *)msg, strlen(msg), 200);
-        // HAL_UART_Transmit(&huart1, (uint8_t *)msg2, strlen(msg2), 200); // 发送到Lora
         HAL_Delay(50); // 短暂延时，避免串口拥堵
       }
-      // 示例：打印数组内容
+      
+      // 检查温度并控制继电器
+      uint8_t relay_status = 0;
       for (uint8_t i = 0; i < g_num_sensors; i++)
       {
-          char temp_msg[50];
           if(temperatureArray[i] > TEMP_THRESHOLD)
           {
             RELAY_Control(1); // 温度超过阈值，打开继电器
             sprintf(relay_msg, "ON");
+            relay_status = 1;
+            break;
           }
-          sprintf(temp_msg, "%.2f;", i, temperatureArray[i]);
+      }
+      
+      if (!relay_status) {
+        RELAY_Control(0); // 温度均低于阈值，关闭继电器
+        sprintf(relay_msg, "OFF");
+      }
+      
+      // OLED显示温度和继电器状态
+      OLED_DisplayTemperature(
+          temperatureArray[0], 
+          (g_num_sensors > 1) ? temperatureArray[1] : -999.0, 
+          relay_status,
+          TEMP_THRESHOLD
+      );
+      
+      // 格式化并发送到Lora
+      strcpy(msg2, "");
+      for (uint8_t i = 0; i < g_num_sensors; i++)
+      {
+          char temp_msg[50];
+          sprintf(temp_msg, "%.2f;", temperatureArray[i]);
           strcat(msg2, temp_msg);
       }
-      if (temperatureArray[0] < TEMP_THRESHOLD)
-      {
-        if (temperatureArray[1] < TEMP_THRESHOLD)
-        {
-          if (temperatureArray[2] < TEMP_THRESHOLD)
-          {
-            RELAY_Control(0); // 温度低于阈值，关闭继电器
-            sprintf(relay_msg, "OFF");
-          }
-        }
-      }
       strcat(msg2, relay_msg); // 继电器状态
-      // 发送温度数据到Lora
       strcat(msg2, "\r\n");
       HAL_UART_Transmit(&huart1, (uint8_t *)msg2, strlen(msg2), 200); // 发送到Lora
     }
