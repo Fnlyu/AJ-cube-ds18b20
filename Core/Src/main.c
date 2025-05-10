@@ -363,13 +363,13 @@ void DS18B20_ScanDevices(void)
   // 可以在这里通过串口打印找到的传感器数量和ROM地址，用于调试
   char dbg_msg[100];
   sprintf(dbg_msg, "Found %d DS18B20 sensors.\r\n", g_num_sensors);
-  HAL_UART_Transmit(&huart1, (uint8_t *)dbg_msg, strlen(dbg_msg), 100);
+  HAL_UART_Transmit(&huart3, (uint8_t *)dbg_msg, strlen(dbg_msg), 100);
   for (int i = 0; i < g_num_sensors; i++)
   {
     sprintf(dbg_msg, "Sensor %d ROM: %02X%02X%02X%02X%02X%02X%02X%02X\r\n", i,
             g_ds18b20_roms[i][7], g_ds18b20_roms[i][6], g_ds18b20_roms[i][5], g_ds18b20_roms[i][4],
             g_ds18b20_roms[i][3], g_ds18b20_roms[i][2], g_ds18b20_roms[i][1], g_ds18b20_roms[i][0]);
-    HAL_UART_Transmit(&huart1, (uint8_t *)dbg_msg, strlen(dbg_msg), 200);
+    HAL_UART_Transmit(&huart3, (uint8_t *)dbg_msg, strlen(dbg_msg), 200);
     HAL_Delay(10); // 短暂延时避免串口发送过快
   }
 }
@@ -468,6 +468,7 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
   char msg[100]; // 增加缓冲区大小以容纳ROM地址
+  char msg2[100]; // lora发送信息
   float temperature;
   /* USER CODE END 1 */
 
@@ -494,14 +495,14 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   HAL_Delay(100); // 等待总线稳定
-  HAL_UART_Transmit(&huart1, (uint8_t *)"DS18B20 Multi-Sensor Test\r\n", strlen("DS18B20 Multi-Sensor Test\r\n"), 100);
+  HAL_UART_Transmit(&huart3, (uint8_t *)"DS18B20 Multi-Sensor Test\r\n", strlen("DS18B20 Multi-Sensor Test\r\n"), 100);
 
   // --- 修改：扫描设备 ---
   DS18B20_ScanDevices();
 
   if (g_num_sensors == 0)
   {
-    HAL_UART_Transmit(&huart1, (uint8_t *)"No DS18B20 sensors found!\r\n", strlen("No DS18B20 sensors found!\r\n"), 100);
+    HAL_UART_Transmit(&huart3, (uint8_t *)"No DS18B20 sensors found!\r\n", strlen("No DS18B20 sensors found!\r\n"), 100);
     while (1)
       ; // 没有传感器则停止
   }
@@ -537,19 +538,21 @@ int main(void)
         if (temperature > -900.0)
         { // 检查是否为有效温度值
           sprintf(msg, "Sensor %d [%s]: %.2f C\r\n", i, rom_str, temperature);
+          sprintf(msg2, "%.2f;",temperature);
         }
         else
         {
           sprintf(msg, "Sensor %d [%s]: Read Error (Code: %.1f)\r\n", i, rom_str, temperature);
         }
-        HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 200);
+        HAL_UART_Transmit(&huart3, (uint8_t *)msg, strlen(msg), 200);
+        HAL_UART_Transmit(&huart1, (uint8_t *)msg2, strlen(msg2), 200); // 发送到Lora
         HAL_Delay(50); // 短暂延时，避免串口拥堵
       }
     }
     else
     {
       sprintf(msg, "Failed to start conversion.\r\n");
-      HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
+      HAL_UART_Transmit(&huart3, (uint8_t *)msg, strlen(msg), 100);
     }
 
     HAL_Delay(2000); // 每隔一段时间读取一次
