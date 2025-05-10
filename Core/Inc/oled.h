@@ -21,6 +21,8 @@ void OLED_DrawRectangle(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2);
 void OLED_DrawCircle(uint8_t x, uint8_t y, uint8_t radius);
 
 // 显示温度等专用函数
-void OLED_DisplayTemperature(float temp1, float temp2, uint8_t relay_status, float temp_threshold);
+// void OLED_DisplayTemperature(float temp1, float temp2, uint8_t relay_status, float temp_threshold);
+// 修改函数声明，添加第三个传感器参数
+void OLED_DisplayTemperature(float temp1, float temp2, float temp3, uint8_t relay_status, float temp_threshold);
 void OLED_DisplaySensorInfo(uint8_t num_sensors);
 #endif

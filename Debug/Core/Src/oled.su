@@ -11,5 +11,5 @@
 ../Core/Src/oled.c:182:6:OLED_ShowNum	24	static
 ../Core/Src/oled.c:203:6:OLED_ShowFloat	48	static
 ../Core/Src/oled.c:237:6:OLED_Init	48	static
-../Core/Src/oled.c:258:6:OLED_DisplayTemperature	48	static
-../Core/Src/oled.c:302:6:OLED_DisplaySensorInfo	40	static
+../Core/Src/oled.c:302:6:OLED_DisplayTemperature	48	static
+../Core/Src/oled.c:355:6:OLED_DisplaySensorInfo	40	static

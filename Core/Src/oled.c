@@ -255,7 +255,51 @@ void OLED_Init(void)
 }
 
 // 显示温度和继电器状态
-void OLED_DisplayTemperature(float temp1, float temp2, uint8_t relay_status, float temp_threshold)
+// void OLED_DisplayTemperature(float temp1, float temp2, uint8_t relay_status, float temp_threshold)
+// {
+//     char buffer[20];
+    
+//     OLED_Clear();  // 清屏
+    
+//     // 显示标题
+//     OLED_ShowString(0, 0, "Temperature Monitor", 8);
+//     OLED_ShowString(0, 16, "Sensor1:", 8);
+    
+//     // 显示传感器1温度
+//     if (temp1 > -900.0) {
+//         sprintf(buffer, "%.1fC", temp1);
+//         OLED_ShowString(56, 16, buffer, 8);
+//     } else {
+//         OLED_ShowString(56, 16, "Error", 8);
+//     }
+    
+//     // 显示传感器2温度
+//     OLED_ShowString(0, 26, "Sensor2:", 8);
+//     if (temp2 > -900.0) {
+//         sprintf(buffer, "%.1fC", temp2);
+//         OLED_ShowString(56, 26, buffer, 8);
+//     } else {
+//         OLED_ShowString(56, 26, "Error", 8);
+//     }
+    
+//     // 显示继电器状态
+//     OLED_ShowString(0, 40, "Relay:", 8);
+//     if (relay_status) {
+//         OLED_ShowString(56, 40, "ON ", 8);
+//     } else {
+//         OLED_ShowString(56, 40, "OFF", 8);
+//     }
+    
+//     // 显示温度阈值
+//     OLED_ShowString(0, 50, "Threshold:", 8);
+//     sprintf(buffer, "%.1fC", temp_threshold);
+//     OLED_ShowString(56, 50, buffer, 8);
+    
+//     OLED_Refresh();  // 更新显示
+// }
+
+// 显示温度和继电器状态
+void OLED_DisplayTemperature(float temp1, float temp2, float temp3, uint8_t relay_status, float temp_threshold)
 {
     char buffer[20];
     
@@ -281,19 +325,28 @@ void OLED_DisplayTemperature(float temp1, float temp2, uint8_t relay_status, flo
     } else {
         OLED_ShowString(56, 26, "Error", 8);
     }
+
+    // 显示传感器3温度
+    OLED_ShowString(0, 36, "Sensor3:", 8);
+    if (temp3 > -900.0) {
+        sprintf(buffer, "%.1fC", temp3);
+        OLED_ShowString(56, 36, buffer, 8);
+    } else {
+        OLED_ShowString(56, 36, "Error", 8);
+    }
     
     // 显示继电器状态
-    OLED_ShowString(0, 40, "Relay:", 8);
+    OLED_ShowString(0, 50, "Relay:", 8);
     if (relay_status) {
-        OLED_ShowString(56, 40, "ON ", 8);
+        OLED_ShowString(56, 50, "ON ", 8);
     } else {
-        OLED_ShowString(56, 40, "OFF", 8);
+        OLED_ShowString(56, 50, "OFF", 8);
     }
     
     // 显示温度阈值
-    OLED_ShowString(0, 50, "Threshold:", 8);
-    sprintf(buffer, "%.1fC", temp_threshold);
-    OLED_ShowString(56, 50, buffer, 8);
+    // OLED_ShowString(0, 64, "Threshold:", 8);
+    sprintf(buffer, "%d", temp_threshold);
+    OLED_ShowString(90, 50, buffer, 8);
     
     OLED_Refresh();  // 更新显示
 }

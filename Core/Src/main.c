@@ -603,9 +603,17 @@ int main(void)
       }
       
       // OLED显示温度和继电器状态
+      // OLED_DisplayTemperature(
+      //     temperatureArray[0], 
+      //     (g_num_sensors > 1) ? temperatureArray[1] : -999.0, 
+      //     relay_status,
+      //     TEMP_THRESHOLD
+      // );
+      // OLED显示温度和继电器状态
       OLED_DisplayTemperature(
           temperatureArray[0], 
-          (g_num_sensors > 1) ? temperatureArray[1] : -999.0, 
+          (g_num_sensors > 1) ? temperatureArray[1] : -999.0,
+          (g_num_sensors > 2) ? temperatureArray[2] : -999.0,
           relay_status,
           TEMP_THRESHOLD
       );
