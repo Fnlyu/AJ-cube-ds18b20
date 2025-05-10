@@ -50,7 +50,7 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, DS18B20_DQ_Pin|JDQ_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, DS18B20_DQ_Pin|RELAY_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : DS18B20_DQ_Pin */
   GPIO_InitStruct.Pin = DS18B20_DQ_Pin;
@@ -59,12 +59,12 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(DS18B20_DQ_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : JDQ_Pin */
-  GPIO_InitStruct.Pin = JDQ_Pin;
+  /*Configure GPIO pin : RELAY_Pin */
+  GPIO_InitStruct.Pin = RELAY_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(JDQ_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(RELAY_GPIO_Port, &GPIO_InitStruct);
 
 }
 

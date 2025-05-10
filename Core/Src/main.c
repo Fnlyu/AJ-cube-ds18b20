@@ -29,6 +29,9 @@
 #define DS18B20_PORT GPIOA
 #define DS18B20_PIN GPIO_PIN_1
 
+#define RELAY_Pin GPIO_PIN_4
+#define RELAY_GPIO_Port GPIOA
+#define TEMP_THRESHOLD 30.0f   // 温度阈值（摄氏度），可根据需要调整
 #define MAX_DS18B20_SENSORS 5
 /* USER CODE END Includes */
 
@@ -57,6 +60,7 @@ uint8_t g_num_sensors = 0;
 uint8_t LastDiscrepancy;
 uint8_t LastFamilyDiscrepancy;
 uint8_t LastDeviceFlag;
+float temperatureArray[2]; // 用于存储温度值
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -68,6 +72,18 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 /* USER CODE BEGIN 0 */
+
+// 初始化继电器控制引脚
+void RELAY_Init(void)
+{
+  HAL_GPIO_WritePin(RELAY_GPIO_Port, RELAY_Pin, GPIO_PIN_RESET);
+}
+
+// 控制继电器状态
+void RELAY_Control(uint8_t state)
+{
+  HAL_GPIO_WritePin(RELAY_GPIO_Port, RELAY_Pin, state ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
 
 // 微秒级延时函数 (保持不变)
 void Delay_us(uint16_t us)
@@ -469,6 +485,7 @@ int main(void)
   /* USER CODE BEGIN 1 */
   char msg[100]; // 增加缓冲区大小以容纳ROM地址
   char msg2[100]; // lora发送信息
+  char relay_msg[50]; // 继电器控制信息
   float temperature;
   /* USER CODE END 1 */
 
@@ -494,6 +511,8 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  RELAY_Init();
+  
   HAL_Delay(100); // 等待总线稳定
   HAL_UART_Transmit(&huart3, (uint8_t *)"DS18B20 Multi-Sensor Test\r\n", strlen("DS18B20 Multi-Sensor Test\r\n"), 100);
 
@@ -528,7 +547,8 @@ int main(void)
       for (uint8_t i = 0; i < g_num_sensors; i++)
       {
         temperature = DS18B20_GetTemp(g_ds18b20_roms[i]);
-
+        // 保存温度值到数组中
+        temperatureArray[i] = temperature;
         // 格式化ROM地址用于显示
         char rom_str[25];
         sprintf(rom_str, "%02X;%02X;%02X;%02X;%02X;%02X;%02X;%02X",
@@ -545,9 +565,36 @@ int main(void)
           sprintf(msg, "Sensor %d [%s]: Read Error (Code: %.1f)\r\n", i, rom_str, temperature);
         }
         HAL_UART_Transmit(&huart3, (uint8_t *)msg, strlen(msg), 200);
-        HAL_UART_Transmit(&huart1, (uint8_t *)msg2, strlen(msg2), 200); // 发送到Lora
+        // HAL_UART_Transmit(&huart1, (uint8_t *)msg2, strlen(msg2), 200); // 发送到Lora
         HAL_Delay(50); // 短暂延时，避免串口拥堵
       }
+      // 示例：打印数组内容
+      for (uint8_t i = 0; i < g_num_sensors; i++)
+      {
+          char temp_msg[50];
+          if(temperatureArray[i] > TEMP_THRESHOLD)
+          {
+            RELAY_Control(1); // 温度超过阈值，打开继电器
+            sprintf(relay_msg, "ON");
+          }
+          sprintf(temp_msg, "%.2f;", i, temperatureArray[i]);
+          strcat(msg2, temp_msg);
+      }
+      if (temperatureArray[0] < TEMP_THRESHOLD)
+      {
+        if (temperatureArray[1] < TEMP_THRESHOLD)
+        {
+          if (temperatureArray[2] < TEMP_THRESHOLD)
+          {
+            RELAY_Control(0); // 温度低于阈值，关闭继电器
+            sprintf(relay_msg, "OFF");
+          }
+        }
+      }
+      strcat(msg2, relay_msg); // 继电器状态
+      // 发送温度数据到Lora
+      strcat(msg2, "\r\n");
+      HAL_UART_Transmit(&huart1, (uint8_t *)msg2, strlen(msg2), 200); // 发送到Lora
     }
     else
     {
