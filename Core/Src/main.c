@@ -525,7 +525,7 @@ int main(void)
   OLED_Refresh();
     HAL_Delay(1000); // 显示欢迎信息一段时间
 
-  HAL_UART_Transmit(&huart3, (uint8_t *)"DS18B20 Multi-Sensor Test\r\n", strlen("DS18B20 Multi-Sensor Test\r\n"), 100);
+  HAL_UART_Transmit(&huart1, (uint8_t *)"DS18B20 Multi-Sensor Test\r\n", strlen("DS18B20 Multi-Sensor Test\r\n"), 100);
 
   // --- 修改：扫描设备 ---
   DS18B20_ScanDevices();
@@ -536,7 +536,7 @@ int main(void)
 
   if (g_num_sensors == 0)
   {
-    HAL_UART_Transmit(&huart3, (uint8_t *)"No DS18B20 sensors found!\r\n", strlen("No DS18B20 sensors found!\r\n"), 100);
+    HAL_UART_Transmit(&huart1, (uint8_t *)"No DS18B20 sensors found!\r\n", strlen("No DS18B20 sensors found!\r\n"), 100);
     while (1)
       ; // 没有传感器则停止
   }
@@ -553,7 +553,7 @@ int main(void)
     /* USER CODE BEGIN 3 */
     // 1. 启动所有传感器的温度转换
     if (DS18B20_StartConversionAll() == 0)
-    {
+    {     
       // 2. 等待转换完成 (标准精度约750ms)
       //    注意：如果设置了不同精度，等待时间需要调整
       HAL_Delay(750);
@@ -580,7 +580,9 @@ int main(void)
         {
           sprintf(msg, "Sensor %d [%s]: Read Error (Code: %.1f)\r\n", i, rom_str, temperature);
         }
-        HAL_UART_Transmit(&huart3, (uint8_t *)msg, strlen(msg), 200);
+
+        //暂时关闭，防止串口拥堵
+        // HAL_UART_Transmit(&huart3, (uint8_t *)msg, strlen(msg), 200);
         HAL_Delay(50); // 短暂延时，避免串口拥堵
       }
       
@@ -620,20 +622,20 @@ int main(void)
       
       // 格式化并发送到Lora
       strcpy(msg2, "");
-      for (uint8_t i = 0; i < g_num_sensors; i++)
+      for (uint8_t i = 0; i < 2; i++)
       {
           char temp_msg[50];
           sprintf(temp_msg, "%.2f;", temperatureArray[i]);
           strcat(msg2, temp_msg);
       }
       strcat(msg2, relay_msg); // 继电器状态
-      strcat(msg2, "\r\n");
-      HAL_UART_Transmit(&huart1, (uint8_t *)msg2, strlen(msg2), 200); // 发送到Lora
+      strcat(msg2, ";\r\n");
+      HAL_UART_Transmit(&huart3, (uint8_t *)msg2, strlen(msg2), 200); // 发送到Lora
     }
     else
     {
       sprintf(msg, "Failed to start conversion.\r\n");
-      HAL_UART_Transmit(&huart3, (uint8_t *)msg, strlen(msg), 100);
+      HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
     }
 
     HAL_Delay(2000); // 每隔一段时间读取一次

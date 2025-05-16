@@ -345,7 +345,7 @@ void OLED_DisplayTemperature(float temp1, float temp2, float temp3, uint8_t rela
     
     // 显示温度阈值
     // OLED_ShowString(0, 64, "Threshold:", 8);
-    sprintf(buffer, "%d", temp_threshold);
+    sprintf(buffer, "%.f", temp_threshold);
     OLED_ShowString(90, 50, buffer, 8);
     
     OLED_Refresh();  // 更新显示
