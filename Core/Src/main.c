@@ -62,7 +62,7 @@ uint8_t g_num_sensors = 0;
 uint8_t LastDiscrepancy;
 uint8_t LastFamilyDiscrepancy;
 uint8_t LastDeviceFlag;
-float temperatureArray[2]; // 用于存储温度值
+float temperatureArray[3]; // 用于存储温度值
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -622,7 +622,7 @@ int main(void)
       
       // 格式化并发送到Lora
       strcpy(msg2, "");
-      for (uint8_t i = 0; i < 2; i++)
+      for (uint8_t i = 0; i < 3; i++)
       {
           char temp_msg[50];
           sprintf(temp_msg, "%.2f;", temperatureArray[i]);
