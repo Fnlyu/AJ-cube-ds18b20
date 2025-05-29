@@ -63,6 +63,17 @@ uint8_t LastDiscrepancy;
 uint8_t LastFamilyDiscrepancy;
 uint8_t LastDeviceFlag;
 float temperatureArray[3]; // 用于存储温度值
+
+// --- 新增：串口3接收和继电器定时控制相关变量 ---
+#define UART3_RX_BUFFER_SIZE 50
+uint8_t uart3_rx_buffer[UART3_RX_BUFFER_SIZE];
+uint8_t uart3_rx_index = 0;
+uint8_t uart3_rx_complete = 0;
+uint8_t uart3_current_char; // 当前接收的字符
+uint32_t relay_timer_count = 0;  // 继电器定时器计数
+uint8_t relay_timer_active = 0;  // 继电器定时器是否激活
+uint8_t relay_force_state = 0;   // 强制继电器状态（0=关闭，1=开启）
+uint8_t relay_temp_control = 1;  // 温度控制是否启用（1=启用，0=禁用）
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -465,7 +476,7 @@ float DS18B20_GetTemp(const uint8_t *rom_code)
   return result;
 }
 
-// --- 新增：启动所有连接设备的温度转换 ---
+// 启动所有连接设备的温度转换 ---
 uint8_t DS18B20_StartConversionAll(void)
 {
   if (DS18B20_Reset() != 0)
@@ -473,6 +484,138 @@ uint8_t DS18B20_StartConversionAll(void)
   DS18B20_SkipRom();       // 使用 Skip ROM 命令
   DS18B20_WriteByte(0x44); // 启动温度转换命令
   return 0;                // 成功启动
+}
+
+// --- 新增：串口3接收中断回调函数 ---
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART3)
+  {
+    // 检查是否接收到换行符或回车符
+    if (uart3_current_char == '\n' || uart3_current_char == '\r')
+    {
+      uart3_rx_buffer[uart3_rx_index] = '\0'; // 添加字符串结束符
+      uart3_rx_complete = 1; // 标记接收完成
+      uart3_rx_index = 0;    // 重置索引
+    }
+    else if (uart3_rx_index >= UART3_RX_BUFFER_SIZE - 2) // 留一个位置给\0
+    {
+      uart3_rx_buffer[uart3_rx_index] = '\0'; // 添加字符串结束符
+      uart3_rx_complete = 1; // 标记接收完成
+      uart3_rx_index = 0;    // 重置索引
+    }
+    else
+    {
+      // 存储接收到的字符
+      uart3_rx_buffer[uart3_rx_index] = uart3_current_char;
+      uart3_rx_index++; // 移动到下一个位置
+    }
+    
+    // 重新启动接收中断，继续接收下一个字符
+    HAL_UART_Receive_IT(&huart3, &uart3_current_char, 1);
+  }
+}
+
+// --- 新增：解析串口命令 ---
+void Parse_UART3_Command(void)
+{
+  if (!uart3_rx_complete) return;
+  
+  char *command = (char *)uart3_rx_buffer;
+  char response[100];
+  
+  // 添加详细调试信息 - 显示缓冲区内容
+  sprintf(response, "RX Complete! Buffer: [");
+  HAL_UART_Transmit(&huart3, (uint8_t *)response, strlen(response), 200);
+  
+  for (int i = 0; i < uart3_rx_index; i++) {
+    sprintf(response, "%02X ", uart3_rx_buffer[i]);
+    HAL_UART_Transmit(&huart3, (uint8_t *)response, strlen(response), 200);
+  }
+  
+  sprintf(response, "] String: [%s] (len=%d, index=%d)\r\n", command, strlen(command), uart3_rx_index);
+  HAL_UART_Transmit(&huart3, (uint8_t *)response, strlen(response), 200);
+  
+  // 解析 "on" 命令
+  if (strncmp(command, "on", 2) == 0)
+  {
+    uint32_t duration = atoi(command + 2); // 提取数字部分
+    sprintf(response, "Parsed duration: %lu\r\n", duration);
+    HAL_UART_Transmit(&huart3, (uint8_t *)response, strlen(response), 200);
+    
+    if (duration > 0 && duration <= 9999) // 限制最大时间
+    {
+      relay_timer_count = duration;
+      relay_timer_active = 1;
+      relay_force_state = 1;
+      relay_temp_control = 0; // 禁用温度控制
+      RELAY_Control(1);       // 立即打开继电器
+      
+      sprintf(response, "Relay ON for %lu seconds\r\n", duration);
+      HAL_UART_Transmit(&huart3, (uint8_t *)response, strlen(response), 200);
+    }
+    else
+    {
+      sprintf(response, "Invalid duration: %s (parsed: %lu)\r\n", command, duration);
+      HAL_UART_Transmit(&huart3, (uint8_t *)response, strlen(response), 200);
+    }
+  }
+  // 解析 "off" 命令
+  else if (strncmp(command, "off", 3) == 0)
+  {
+    uint32_t duration = atoi(command + 3); // 提取数字部分
+    if (duration > 0 && duration <= 9999) // 限制最大时间
+    {
+      relay_timer_count = duration;
+      relay_timer_active = 1;
+      relay_force_state = 0;
+      relay_temp_control = 0; // 禁用温度控制
+      RELAY_Control(0);       // 立即关闭继电器
+      
+      sprintf(response, "Relay OFF for %lu seconds\r\n", duration);
+      HAL_UART_Transmit(&huart3, (uint8_t *)response, strlen(response), 200);
+    }
+    else
+    {
+      sprintf(response, "Invalid duration: %s\r\n", command);
+      HAL_UART_Transmit(&huart3, (uint8_t *)response, strlen(response), 200);
+    }
+  }
+  // 解析 "auto" 命令 - 恢复温度控制
+  else if (strncmp(command, "auto", 4) == 0)
+  {
+    relay_timer_active = 0;
+    relay_temp_control = 1; // 重新启用温度控制
+    sprintf(response, "Auto temperature control enabled\r\n");
+    HAL_UART_Transmit(&huart3, (uint8_t *)response, strlen(response), 200);
+  }
+  else
+  {
+    sprintf(response, "Unknown command: %s\r\n", command);
+    HAL_UART_Transmit(&huart3, (uint8_t *)response, strlen(response), 200);
+  }
+  
+  uart3_rx_complete = 0; // 重置完成标志
+}
+
+// --- 新增：更新继电器定时器 ---
+void Update_Relay_Timer(void)
+{
+  if (relay_timer_active && relay_timer_count > 0)
+  {
+    relay_timer_count--;
+    
+    // 定时器到期
+    if (relay_timer_count == 0)
+    {
+      relay_timer_active = 0;
+      relay_temp_control = 1; // 重新启用温度控制
+      
+      char response[50];
+      sprintf(response, "Timer expired, auto control enabled\r\n");
+      HAL_UART_Transmit(&huart3, (uint8_t *)response, strlen(response), 200);
+    }
+  }
 }
 
 /* USER CODE END 0 */
@@ -512,14 +655,15 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART3_UART_Init();
   MX_I2C1_Init();
-  /* USER CODE BEGIN 2 */
-
-  RELAY_Init();
-    OLED_Init();  // 初始化OLED
+  /* USER CODE BEGIN 2 */  RELAY_Init();
+  OLED_Init();  // 初始化OLED
 
   HAL_Delay(100); // 等待总线稳定
 
-    // 在OLED上显示欢迎信息
+  // 启动串口3接收中断
+  HAL_UART_Receive_IT(&huart3, &uart3_current_char, 1);
+
+  // 在OLED上显示欢迎信息
   OLED_ShowString(0, 0, "DS18B20 Temperature", 8);
   OLED_ShowString(0, 16, "System Initializing", 8);
   OLED_Refresh();
@@ -545,12 +689,22 @@ int main(void)
   /* USER CODE END 2 */
 
   /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  while (1)
+  /* USER CODE BEGIN WHILE */  while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    // 处理串口3接收到的命令
+    Parse_UART3_Command();
+    
+    // 更新继电器定时器（每秒调用一次）
+    static uint32_t last_timer_update = 0;
+    if (HAL_GetTick() - last_timer_update >= 1000) // 每1000ms更新一次
+    {
+      Update_Relay_Timer();
+      last_timer_update = HAL_GetTick();
+    }
+    
     // 1. 启动所有传感器的温度转换
     if (DS18B20_StartConversionAll() == 0)
     {     
@@ -585,23 +739,31 @@ int main(void)
         // HAL_UART_Transmit(&huart3, (uint8_t *)msg, strlen(msg), 200);
         HAL_Delay(50); // 短暂延时，避免串口拥堵
       }
-      
-      // 检查温度并控制继电器
+        // 检查温度并控制继电器（仅在温度控制启用时）
       uint8_t relay_status = 0;
-      for (uint8_t i = 0; i < g_num_sensors; i++)
+      if (relay_temp_control) 
       {
-          if(temperatureArray[i] > TEMP_THRESHOLD)
-          {
-            RELAY_Control(1); // 温度超过阈值，打开继电器
-            sprintf(relay_msg, "ON");
-            relay_status = 1;
-            break;
-          }
+        for (uint8_t i = 0; i < g_num_sensors; i++)
+        {
+            if(temperatureArray[i] > TEMP_THRESHOLD)
+            {
+              RELAY_Control(1); // 温度超过阈值，打开继电器
+              sprintf(relay_msg, "ON");
+              relay_status = 1;
+              break;
+            }
+        }
+        
+        if (!relay_status) {
+          RELAY_Control(0); // 温度均低于阈值，关闭继电器
+          sprintf(relay_msg, "OFF");
+        }
       }
-      
-      if (!relay_status) {
-        RELAY_Control(0); // 温度均低于阈值，关闭继电器
-        sprintf(relay_msg, "OFF");
+      else
+      {
+        // 使用强制状态
+        relay_status = relay_force_state;
+        sprintf(relay_msg, relay_status ? "ON" : "OFF");
       }
       
       // OLED显示温度和继电器状态
@@ -638,7 +800,7 @@ int main(void)
       HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
     }
 
-    HAL_Delay(2000); // 每隔一段时间读取一次
+    HAL_Delay(6000); // 每隔一段时间读取一次
   }
   /* USER CODE END 3 */
 }
