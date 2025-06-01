@@ -689,7 +689,8 @@ int main(void)
   /* USER CODE END 2 */
 
   /* Infinite loop */
-  /* USER CODE BEGIN WHILE */  while (1)
+  /* USER CODE BEGIN WHILE */  
+  while (1)
   {
     /* USER CODE END WHILE */
 
@@ -800,7 +801,7 @@ int main(void)
       HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
     }
 
-    HAL_Delay(6000); // 每隔一段时间读取一次
+    HAL_Delay(2000); // 每隔一段时间读取一次
   }
   /* USER CODE END 3 */
 }
