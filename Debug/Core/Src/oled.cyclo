@@ -12,4 +12,4 @@
 ../Core/Src/oled.c:203:6:OLED_ShowFloat	7
 ../Core/Src/oled.c:237:6:OLED_Init	2
 ../Core/Src/oled.c:302:6:OLED_DisplayTemperature	5
-../Core/Src/oled.c:355:6:OLED_DisplaySensorInfo	2
+../Core/Src/oled.c:347:6:OLED_DisplaySensorInfo	2

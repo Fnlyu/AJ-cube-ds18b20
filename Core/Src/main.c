@@ -33,7 +33,6 @@
 
 #define RELAY_Pin GPIO_PIN_4
 #define RELAY_GPIO_Port GPIOA
-#define TEMP_THRESHOLD 30.0f   // 温度阈值（摄氏度），可根据需要调整
 #define MAX_DS18B20_SENSORS 5
 /* USER CODE END Includes */
 
@@ -74,6 +73,17 @@ uint32_t relay_timer_count = 0;  // 继电器定时器计数
 uint8_t relay_timer_active = 0;  // 继电器定时器是否激活
 uint8_t relay_force_state = 0;   // 强制继电器状态（0=关闭，1=开启）
 uint8_t relay_temp_control = 1;  // 温度控制是否启用（1=启用，0=禁用）
+
+// --- 新增：温度阈值变量（可调） ---
+float temp_threshold = 30.0f; // 默认温度阈值
+#define TEMP_THRESHOLD_MIN  0.0f
+#define TEMP_THRESHOLD_MAX  99.0f
+#define TEMP_THRESHOLD_STEP 1.0f
+
+// 按键防抖相关变量
+uint8_t key_pa2_last = 1, key_pa3_last = 1;
+uint32_t key_debounce_tick_pa2 = 0, key_debounce_tick_pa3 = 0;
+#define KEY_DEBOUNCE_MS 30
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -658,6 +668,13 @@ int main(void)
   /* USER CODE BEGIN 2 */  RELAY_Init();
   OLED_Init();  // 初始化OLED
 
+  // --- 新增：初始化PA2/PA3为输入上拉 ---
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   HAL_Delay(100); // 等待总线稳定
 
   // 启动串口3接收中断
@@ -668,7 +685,6 @@ int main(void)
   OLED_ShowString(0, 16, "System Initializing", 8);
   OLED_Refresh();
     HAL_Delay(1000); // 显示欢迎信息一段时间
-
   HAL_UART_Transmit(&huart1, (uint8_t *)"DS18B20 Multi-Sensor Test\r\n", strlen("DS18B20 Multi-Sensor Test\r\n"), 100);
 
   // --- 修改：扫描设备 ---
@@ -677,6 +693,7 @@ int main(void)
     // 在OLED上显示传感器信息
   OLED_DisplaySensorInfo(g_num_sensors);
   HAL_Delay(2000);
+  OLED_Clear(); // 清屏
 
   if (g_num_sensors == 0)
   {
@@ -690,6 +707,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */  
+  uint32_t last_task_tick = 0;
   while (1)
   {
     /* USER CODE END WHILE */
@@ -705,103 +723,154 @@ int main(void)
       Update_Relay_Timer();
       last_timer_update = HAL_GetTick();
     }
-    
-    // 1. 启动所有传感器的温度转换
-    if (DS18B20_StartConversionAll() == 0)
-    {     
-      // 2. 等待转换完成 (标准精度约750ms)
-      //    注意：如果设置了不同精度，等待时间需要调整
-      HAL_Delay(750);
 
-      // 3. 依次读取每个传感器的温度
-      for (uint8_t i = 0; i < g_num_sensors; i++)
-      {
-        temperature = DS18B20_GetTemp(g_ds18b20_roms[i]);
-        // 保存温度值到数组中
-        temperatureArray[i] = temperature;
-        
-        // 格式化ROM地址用于显示
-        char rom_str[25];
-        sprintf(rom_str, "%02X;%02X;%02X;%02X;%02X;%02X;%02X;%02X",
-                g_ds18b20_roms[i][7], g_ds18b20_roms[i][6], g_ds18b20_roms[i][5], g_ds18b20_roms[i][4],
-                g_ds18b20_roms[i][3], g_ds18b20_roms[i][2], g_ds18b20_roms[i][1], g_ds18b20_roms[i][0]);
-
-        if (temperature > -900.0)
-        { // 检查是否为有效温度值
-          sprintf(msg, "Sensor %d [%s]: %.2f C\r\n", i, rom_str, temperature);
-          sprintf(msg2, "%.2f;",temperature);
+    // --- 非阻塞定时任务：每2秒采集温度和控制继电器 ---
+    if (HAL_GetTick() - last_task_tick >= 2000) {
+      last_task_tick = HAL_GetTick();
+      // 1. 启动所有传感器的温度转换
+      if (DS18B20_StartConversionAll() == 0)
+      {     
+        HAL_Delay(750); // 等待转换完成（可进一步优化为非阻塞）
+        // 3. 依次读取每个传感器的温度
+        for (uint8_t i = 0; i < g_num_sensors; i++)
+        {
+          float temperature = DS18B20_GetTemp(g_ds18b20_roms[i]);
+          temperatureArray[i] = temperature;
+        }
+        // 检查温度并控制继电器（仅在温度控制启用时）
+        uint8_t relay_status = 0;
+        if (relay_temp_control) 
+        {
+          for (uint8_t i = 0; i < g_num_sensors; i++)
+          {
+              if(temperatureArray[i] > temp_threshold)
+              {
+                RELAY_Control(1); // 温度超过阈值，打开继电器
+                sprintf(relay_msg, "ON");
+                relay_status = 1;
+                break;
+              }
+          }
+          if (!relay_status) {
+            RELAY_Control(0); // 温度均低于阈值，关闭继电器
+            sprintf(relay_msg, "OFF");
+          }
         }
         else
         {
-          sprintf(msg, "Sensor %d [%s]: Read Error (Code: %.1f)\r\n", i, rom_str, temperature);
+          relay_status = relay_force_state;
+          sprintf(relay_msg, relay_status ? "ON" : "OFF");
         }
-
-        //暂时关闭，防止串口拥堵
-        // HAL_UART_Transmit(&huart3, (uint8_t *)msg, strlen(msg), 200);
-        HAL_Delay(50); // 短暂延时，避免串口拥堵
-      }
-        // 检查温度并控制继电器（仅在温度控制启用时）
-      uint8_t relay_status = 0;
-      if (relay_temp_control) 
-      {
-        for (uint8_t i = 0; i < g_num_sensors; i++)
+        // OLED显示温度和继电器状态，显示当前阈值
+        OLED_DisplayTemperature(
+            temperatureArray[0], 
+            (g_num_sensors > 1) ? temperatureArray[1] : -999.0,
+            (g_num_sensors > 2) ? temperatureArray[2] : -999.0,
+            relay_status,
+            temp_threshold
+        );
+        // 格式化并发送到Lora
+        strcpy(msg2, "");
+        for (uint8_t i = 0; i < 3; i++)
         {
-            if(temperatureArray[i] > TEMP_THRESHOLD)
-            {
-              RELAY_Control(1); // 温度超过阈值，打开继电器
-              sprintf(relay_msg, "ON");
-              relay_status = 1;
-              break;
-            }
+            char temp_msg[50];
+            sprintf(temp_msg, "%.2f;", temperatureArray[i]);
+            strcat(msg2, temp_msg);
         }
-        
-        if (!relay_status) {
-          RELAY_Control(0); // 温度均低于阈值，关闭继电器
-          sprintf(relay_msg, "OFF");
-        }
+        strcat(msg2, relay_msg); // 继电器状态
+        strcat(msg2, ";\r\n");
+        HAL_UART_Transmit(&huart3, (uint8_t *)msg2, strlen(msg2), 200); // 发送到Lora
       }
       else
       {
-        // 使用强制状态
-        relay_status = relay_force_state;
-        sprintf(relay_msg, relay_status ? "ON" : "OFF");
+        sprintf(msg, "Failed to start conversion.\r\n");
+        HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
       }
-      
-      // OLED显示温度和继电器状态
-      // OLED_DisplayTemperature(
-      //     temperatureArray[0], 
-      //     (g_num_sensors > 1) ? temperatureArray[1] : -999.0, 
-      //     relay_status,
-      //     TEMP_THRESHOLD
-      // );
-      // OLED显示温度和继电器状态
-      OLED_DisplayTemperature(
-          temperatureArray[0], 
-          (g_num_sensors > 1) ? temperatureArray[1] : -999.0,
-          (g_num_sensors > 2) ? temperatureArray[2] : -999.0,
-          relay_status,
-          TEMP_THRESHOLD
-      );
-      
-      // 格式化并发送到Lora
-      strcpy(msg2, "");
-      for (uint8_t i = 0; i < 3; i++)
+    }
+
+    // --- 按键扫描与阈值调节（实时） ---
+    uint8_t key_pa2 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
+    uint8_t key_pa3 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
+    uint32_t now = HAL_GetTick();
+    // PA2: 阈值减1
+    if (key_pa2 == 0 && key_pa2_last == 1 && (now - key_debounce_tick_pa2 > KEY_DEBOUNCE_MS)) {
+      key_debounce_tick_pa2 = now;
+      if (temp_threshold > TEMP_THRESHOLD_MIN) {
+        temp_threshold -= TEMP_THRESHOLD_STEP;
+        if (temp_threshold < TEMP_THRESHOLD_MIN) temp_threshold = TEMP_THRESHOLD_MIN;
+        // 不再单独刷新OLED，统一在主定时任务里刷新
+        // OLED_ShowString(0, 48, "Threshold-", 8);
+        // OLED_ShowNum(80, 48, (int)temp_threshold, 2, 8);
+        // OLED_Refresh();
+        HAL_Delay(200); // 简单消抖
+      }
+    }
+    key_pa2_last = key_pa2;
+    // PA3: 阈值加1
+    if (key_pa3 == 0 && key_pa3_last == 1 && (now - key_debounce_tick_pa3 > KEY_DEBOUNCE_MS)) {
+      key_debounce_tick_pa3 = now;
+      if (temp_threshold < TEMP_THRESHOLD_MAX) {
+        temp_threshold += TEMP_THRESHOLD_STEP;
+        if (temp_threshold > TEMP_THRESHOLD_MAX) temp_threshold = TEMP_THRESHOLD_MAX;
+        // 不再单独刷新OLED，统一在主定时任务里刷新
+        // OLED_ShowString(0, 48, "Threshold+", 8);
+        // OLED_ShowNum(80, 48, (int)temp_threshold, 2, 8);
+        // OLED_Refresh();
+        HAL_Delay(200); // 简单消抖
+      }
+    }
+    key_pa3_last = key_pa3;
+
+    // 检查温度并控制继电器（仅在温度控制启用时）
+    uint8_t relay_status = 0;
+    if (relay_temp_control) 
+    {
+      for (uint8_t i = 0; i < g_num_sensors; i++)
       {
-          char temp_msg[50];
-          sprintf(temp_msg, "%.2f;", temperatureArray[i]);
-          strcat(msg2, temp_msg);
+          if(temperatureArray[i] > temp_threshold)
+          {
+            RELAY_Control(1); // 温度超过阈值，打开继电器
+            sprintf(relay_msg, "ON");
+            relay_status = 1;
+            break;
+          }
       }
-      strcat(msg2, relay_msg); // 继电器状态
-      strcat(msg2, ";\r\n");
-      HAL_UART_Transmit(&huart3, (uint8_t *)msg2, strlen(msg2), 200); // 发送到Lora
+      if (!relay_status) {
+        RELAY_Control(0); // 温度均低于阈值，关闭继电器
+        sprintf(relay_msg, "OFF");
+      }
     }
     else
     {
-      sprintf(msg, "Failed to start conversion.\r\n");
-      HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
+      // 使用强制状态
+      relay_status = relay_force_state;
+      sprintf(relay_msg, relay_status ? "ON" : "OFF");
     }
-
-    HAL_Delay(2000); // 每隔一段时间读取一次
+    // OLED显示温度和继电器状态，显示当前阈值
+    OLED_DisplayTemperature(
+        temperatureArray[0], 
+        (g_num_sensors > 1) ? temperatureArray[1] : -999.0,
+        (g_num_sensors > 2) ? temperatureArray[2] : -999.0,
+        relay_status,
+        temp_threshold
+    );
+    // 格式化并发送到Lora
+    strcpy(msg2, "");
+    for (uint8_t i = 0; i < 3; i++)
+    {
+        char temp_msg[50];
+        sprintf(temp_msg, "%.2f;", temperatureArray[i]);
+        strcat(msg2, temp_msg);
+    }
+    strcat(msg2, relay_msg); // 继电器状态
+    strcat(msg2, ";\r\n");
+    HAL_UART_Transmit(&huart3, (uint8_t *)msg2, strlen(msg2), 200); // 发送到Lora
+//    }
+//    else
+//    {
+//      sprintf(msg, "Failed to start conversion.\r\n");
+//      HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), 100);
+//    }
   }
   /* USER CODE END 3 */
 }
